@@ -3,12 +3,11 @@ name: Daily Stock Analysis
 on:
   workflow_dispatch:
   schedule:
-    # GitHub Actions 的 cron 使用 UTC，07:30 UTC 等於台北時間週一至週五 15:30。
     - cron: '30 7 * * 1-5'
 
 jobs:
   daily-analysis:
-    name: 每日股票分析
+    name: daily-analysis
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -16,38 +15,42 @@ jobs:
       FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
       LINE_MESSAGING_TOKEN: ${{ secrets.LINE_MESSAGING_TOKEN }}
       LINE_MESSAGING_USER_ID: ${{ secrets.LINE_MESSAGING_USER_ID }}
-      STOCK_ANALYSIS_RUNNER_ENABLED: 'true'
-      STOCK_ANALYSIS_REPORT_ENABLED: 'true'
       STOCK_ANALYSIS_REPORT_OUTPUT_DIR: target/stock-analysis-reports
 
     steps:
-      - name: 下載原始碼
+      - name: checkout
         uses: actions/checkout@v4
 
-      - name: 設定 JDK 21
+      - name: setup-java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
 
-      - name: 驗證必要 secrets
+      - name: verify-secrets
         run: |
-          test -n "${GOOGLE_API_KEY}" || { echo "缺少 GOOGLE_API_KEY secret"; exit 1; }
-          test -n "${FINMIND_API_TOKEN}" || { echo "缺少 FINMIND_API_TOKEN secret"; exit 1; }
-          test -n "${LINE_MESSAGING_TOKEN}" || { echo "缺少 LINE_MESSAGING_TOKEN secret"; exit 1; }
-          test -n "${LINE_MESSAGING_USER_ID}" || { echo "缺少 LINE_MESSAGING_USER_ID secret"; exit 1; }
+          test -n "${GOOGLE_API_KEY}" || { echo "Missing GOOGLE_API_KEY secret"; exit 1; }
+          test -n "${FINMIND_API_TOKEN}" || { echo "Missing FINMIND_API_TOKEN secret"; exit 1; }
+          test -n "${LINE_MESSAGING_TOKEN}" || { echo "Missing LINE_MESSAGING_TOKEN secret"; exit 1; }
+          test -n "${LINE_MESSAGING_USER_ID}" || { echo "Missing LINE_MESSAGING_USER_ID secret"; exit 1; }
 
-      - name: 設定 Maven Wrapper 權限
+      - name: chmod-mvnw
         run: chmod +x mvnw
 
-      - name: 執行 Maven 測試
+      - name: mvn-test
+        env:
+          STOCK_ANALYSIS_RUNNER_ENABLED: 'false'
+          STOCK_ANALYSIS_REPORT_ENABLED: 'false'
         run: ./mvnw -B test
 
-      - name: 啟動分析 runner 並輸出 JSON report
+      - name: run-analysis
+        env:
+          STOCK_ANALYSIS_RUNNER_ENABLED: 'true'
+          STOCK_ANALYSIS_REPORT_ENABLED: 'true'
         run: ./mvnw -B -DskipTests spring-boot:run '-Dspring-boot.run.arguments=--spring.main.web-application-type=none --spring.devtools.restart.enabled=false --spring.devtools.livereload.enabled=false'
 
-      - name: 上傳 JSON report artifact
+      - name: upload-report-artifact
         uses: actions/upload-artifact@v4
         with:
           name: stock-analysis-report-${{ github.run_number }}
