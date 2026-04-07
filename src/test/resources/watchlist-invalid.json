@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "symbol": "2330",
+      "name": "台積電",
+      "enabled": true
+    },
+    {
+      "symbol": "2317",
+      "name": "鴻海",
+      "enabled": false
+    
+  ]
+}
