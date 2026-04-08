@@ -2,6 +2,15 @@ name: Daily Stock Analysis
 
 on:
   workflow_dispatch:
+    inputs:
+      send_line:
+        description: '是否在本次正式分析後發送 LINE'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
   schedule:
     - cron: '30 7 * * 1-5'
 
@@ -42,12 +51,14 @@ jobs:
         env:
           STOCK_ANALYSIS_RUNNER_ENABLED: 'false'
           STOCK_ANALYSIS_REPORT_ENABLED: 'false'
+          STOCK_ANALYSIS_LINE_NOTIFY_ENABLED: 'false'
         run: ./mvnw -B test
 
       - name: run-analysis
         env:
           STOCK_ANALYSIS_RUNNER_ENABLED: 'true'
           STOCK_ANALYSIS_REPORT_ENABLED: 'true'
+          STOCK_ANALYSIS_LINE_NOTIFY_ENABLED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.send_line || 'false' }}
         run: ./mvnw -B -DskipTests spring-boot:run '-Dspring-boot.run.arguments=--spring.main.web-application-type=none --spring.devtools.restart.enabled=false --spring.devtools.livereload.enabled=false'
 
       - name: upload-report-artifact

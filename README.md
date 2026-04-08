@@ -14,6 +14,7 @@
 - Gemini model：`gemini-2.5-flash-lite`
 - `stock.analysis.runner.enabled=false`
 - `stock.analysis.report.enabled=false`
+- `stock.analysis.line-notify.enabled=false`
 
 ## PowerShell 與 JDK 21
 
@@ -55,7 +56,7 @@ $env:LINE_MESSAGING_USER_ID = '你的 LINE User ID'
 
 ## 手動分析 runner
 
-目前 runner 仍維持第一版策略：執行分析流程、輸出 log、可選擇輸出 JSON 報告，但不自動送 LINE。
+目前 runner 仍維持第一版策略：執行分析流程、輸出 log、可選擇輸出 JSON 報告；LINE 發送改為由獨立開關控制，預設關閉。
 
 可用設定：
 
@@ -63,6 +64,7 @@ $env:LINE_MESSAGING_USER_ID = '你的 LINE User ID'
 - `stock.analysis.runner.start-date`
 - `stock.analysis.report.enabled`
 - `stock.analysis.report.output-dir`
+- `stock.analysis.line-notify.enabled`
 
 若使用環境變數覆蓋，可對應為：
 
@@ -70,6 +72,11 @@ $env:LINE_MESSAGING_USER_ID = '你的 LINE User ID'
 - `STOCK_ANALYSIS_RUNNER_START_DATE`
 - `STOCK_ANALYSIS_REPORT_ENABLED`
 - `STOCK_ANALYSIS_REPORT_OUTPUT_DIR`
+- `STOCK_ANALYSIS_LINE_NOTIFY_ENABLED`
+
+當 `stock.analysis.line-notify.enabled=true` 時，runner 會在分析完成並保留既有 log / report 流程後，直接逐筆沿用 `LineMessagingService` 與 `LineFlexMessageBuilder` 發送 LINE Flex 訊息。
+
+若為 `false`，則只保留既有 log / JSON report 行為，不會呼叫 LINE 發送。
 
 ## JSON 報告輸出
 
@@ -118,12 +125,14 @@ env:
   env:
     STOCK_ANALYSIS_RUNNER_ENABLED: false
     STOCK_ANALYSIS_REPORT_ENABLED: false
+    STOCK_ANALYSIS_LINE_NOTIFY_ENABLED: false
   run: ./mvnw -B test
 
 - name: 執行正式分析 runner
   env:
     STOCK_ANALYSIS_RUNNER_ENABLED: true
     STOCK_ANALYSIS_REPORT_ENABLED: true
+    STOCK_ANALYSIS_LINE_NOTIFY_ENABLED: false
   run: ./mvnw -B -DskipTests spring-boot:run
 ```
 
@@ -133,6 +142,8 @@ env:
 
 - `workflow_dispatch`：手動觸發
 - `schedule`：排程觸發
+
+其中 `schedule` 目前固定以 `STOCK_ANALYSIS_LINE_NOTIFY_ENABLED=false` 執行，避免第一版尚未完成完整驗證前就固定自動發送 LINE。
 
 ### Repository secrets 設定方式
 
@@ -148,7 +159,12 @@ env:
 1. 進入 GitHub repository 的 `Actions`
 2. 點選 `Daily Stock Analysis`
 3. 按右上角 `Run workflow`
-4. 選擇分支後送出
+4. 視需要把 `send_line` 選成 `true` 或 `false`
+5. 選擇分支後送出
+
+若本次只想驗證分析與 artifact，請保持 `send_line=false`。
+
+若要手動驗證 LINE 通知，才切換成 `send_line=true`。
 
 ### Artifact 下載位置
 
@@ -159,6 +175,14 @@ stock-analysis-report-<run_number>
 ```
 
 workflow 會先在 `mvn test` 階段明確關閉 `runner/report`，再於後續 `spring-boot:run` 步驟單獨開啟正式分析，避免測試 lifecycle 誤打真實外部 API。
+
+### 第一版為何先採手動驗證 LINE
+
+目前 LINE 發送先以手動觸發驗證為優先，原因是：
+
+- 正式分析與 artifact 主線已先穩定，LINE 屬於後續外送行為，先用開關隔離風險較安全
+- 手動觸發較容易比對單次分析結果、artifact 與 LINE 訊息內容是否一致
+- 若一開始直接讓排程固定自動發送，當格式或收件設定仍在調整時，容易造成重複通知或錯誤通知
 
 ### 第一版為何先只做 artifact
 

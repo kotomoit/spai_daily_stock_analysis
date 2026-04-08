@@ -1,5 +1,6 @@
 package com.stock.spai.runner;
 
+import com.stock.spai.config.StockAnalysisLineNotifyProperties;
 import com.stock.spai.config.StockAnalysisReportProperties;
 import com.stock.spai.config.StockAnalysisRunnerProperties;
 import com.stock.spai.config.WatchlistConfigLoader;
@@ -7,6 +8,7 @@ import com.stock.spai.dto.AiAnalysisResult;
 import com.stock.spai.dto.WatchlistConfig;
 import com.stock.spai.dto.WatchlistItem;
 import com.stock.spai.service.AnalysisReportWriter;
+import com.stock.spai.service.LineMessagingService;
 import com.stock.spai.service.StockAnalysisFacade;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -37,6 +39,8 @@ public class StockAnalysisApplicationRunner implements ApplicationRunner {
     private final StockAnalysisRunnerProperties runnerProperties;
     private final AnalysisReportWriter analysisReportWriter;
     private final StockAnalysisReportProperties reportProperties;
+    private final LineMessagingService lineMessagingService;
+    private final StockAnalysisLineNotifyProperties lineNotifyProperties;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -62,11 +66,9 @@ public class StockAnalysisApplicationRunner implements ApplicationRunner {
 
             results.forEach(this::logAnalysisResult);
             writeReportIfEnabled(results);
+            sendLineNotificationsIfEnabled(results);
 
             log.info("手動分析 runner 已完成，共輸出 {} 筆分析結果。", results.size());
-            log.info("目前 runner 仍維持第一版行為：僅輸出 log，不自動發送 LINE。");
-
-            // TODO: 後續若要開啟 LINE 推播，請沿用 facade 結果往下串接，不回頭重組底層資料。
         } catch (Exception exception) {
             log.error("手動分析 runner 執行失敗，股票清單：{}，起始日期：{}", stockLabels, startDateForLog, exception);
             throw new IllegalStateException("手動分析 runner 執行失敗", exception);
@@ -109,6 +111,18 @@ public class StockAnalysisApplicationRunner implements ApplicationRunner {
 
         analysisReportWriter.write(results)
                 .ifPresent(this::logReportPath);
+    }
+
+    private void sendLineNotificationsIfEnabled(List<AiAnalysisResult> results) {
+        if (!lineNotifyProperties.isEnabled()) {
+            log.info("手動分析 runner 已停用 LINE 發送，因為 stock.analysis.line-notify.enabled=false。");
+            return;
+        }
+
+        for (AiAnalysisResult result : results) {
+            lineMessagingService.sendProfessionalFlex(result).block();
+            log.info("手動分析 runner 已送出 LINE 通知：{}", toResultLabel(result));
+        }
     }
 
     private String resolveStartDateForLog() {
