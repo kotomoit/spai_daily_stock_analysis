@@ -13,7 +13,7 @@ class AiAnalysisResultBuilderTest {
     private final AiAnalysisResultBuilder aiAnalysisResultBuilder = new AiAnalysisResultBuilder();
 
     @Test
-    void build_shouldFillSummaryAndStance_whenRawTextContainsBullishSignal() {
+    void build_shouldSkipGenericOpeningAndKeepInformativeSummary_whenRawTextContainsBullishSignal() {
         StockAnalysisContext context = new StockAnalysisContext();
         context.setSymbol("2330");
         context.setName("台積電");
@@ -22,15 +22,16 @@ class AiAnalysisResultBuilderTest {
                 "2330",
                 "台積電",
                 """
-                ## 綜合判斷
-                偏多看待，短線可分批佈局，但仍需留意風險。
+                ## AI 分析摘要
+                好的，以下為本次分析摘要。
+                量能回溫且收盤站穩月線，短線偏多，但仍要留意高檔震盪風險。
                 """,
                 context
         );
 
         assertEquals("2330", result.getSymbol());
         assertEquals("台積電", result.getName());
-        assertEquals("綜合判斷", result.getSummary());
+        assertEquals("量能回溫且收盤站穩月線，短線偏多，但仍要留意高檔震盪風險。", result.getSummary());
         assertEquals("偏多", result.getStance());
         assertEquals(context, result.getContext());
     }

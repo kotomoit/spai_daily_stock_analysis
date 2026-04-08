@@ -4,11 +4,11 @@ import com.stock.spai.dto.AiAnalysisResult;
 import com.stock.spai.dto.StockAnalysisContext;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * 以低侵入方式將 AI 原始文字補強為較結構化的分析結果。
+ * 將 AI 原始輸出整理為較穩定可用的分析結果物件。
  */
 @Component
 public class AiAnalysisResultBuilder {
@@ -16,15 +16,15 @@ public class AiAnalysisResultBuilder {
     private static final int SUMMARY_MAX_LENGTH = 120;
 
     private static final List<String> BULLISH_KEYWORDS = List.of(
-            "偏多", "看多", "多方", "買進", "買入", "佈局", "樂觀", "上漲", "強勢"
+            "偏多", "看多", "多方", "上攻", "續強", "轉強", "突破", "買盤", "量增", "站穩"
     );
 
     private static final List<String> BEARISH_KEYWORDS = List.of(
-            "偏空", "看空", "空方", "賣出", "減碼", "保守", "下跌", "弱勢", "風險"
+            "偏空", "看空", "空方", "轉弱", "跌破", "回檔", "賣壓", "量縮", "下彎", "風險"
     );
 
     /**
-     * 建立第一期的結構化結果，保留 rawText 並補上保守推論出的摘要與立場。
+     * 依據 AI 原始文字建立分析結果，包含摘要與立場。
      */
     public AiAnalysisResult build(String symbol, String name, String rawText, StockAnalysisContext context) {
         return new AiAnalysisResult(
@@ -38,35 +38,29 @@ public class AiAnalysisResultBuilder {
     }
 
     /**
-     * 先取第一個有內容的段落作為摘要，若過長則保守截斷。
+     * 從 AI 回覆中挑出第一句真正有資訊量的重點句。
      */
     String buildSummary(String rawText) {
         String normalizedText = normalize(rawText);
         if (normalizedText.isEmpty()) {
-            return "尚無 AI 分析摘要。";
+            return "暫無 AI 分析摘要";
         }
 
-        String firstMeaningfulLine = Arrays.stream(normalizedText.split("\\R"))
-                .map(String::trim)
-                .filter(line -> !line.isEmpty())
-                .map(this::removeMarkdownPrefix)
-                .filter(line -> !line.isEmpty())
-                .findFirst()
-                .orElse(normalizedText);
-
-        if (firstMeaningfulLine.length() <= SUMMARY_MAX_LENGTH) {
-            return firstMeaningfulLine;
+        String bestSummary = AiSummaryTextHelper.extractBestSummary(normalizedText);
+        if (bestSummary.isBlank()) {
+            return trimToMaxLength(normalizedText, SUMMARY_MAX_LENGTH);
         }
-        return firstMeaningfulLine.substring(0, SUMMARY_MAX_LENGTH) + "...";
+
+        return trimToMaxLength(bestSummary, SUMMARY_MAX_LENGTH);
     }
 
     /**
-     * 以關鍵字數量做保守判斷，若訊號不明確則回傳中立。
+     * 依據關鍵字粗略判斷 AI 立場，供卡片快速閱讀使用。
      */
     String detectStance(String rawText) {
         String normalizedText = normalize(rawText);
         if (normalizedText.isEmpty()) {
-            return "中立";
+            return "中性";
         }
 
         int bullishScore = countKeywords(normalizedText, BULLISH_KEYWORDS);
@@ -78,12 +72,14 @@ public class AiAnalysisResultBuilder {
         if (bearishScore > bullishScore) {
             return "偏空";
         }
-        return "中立";
+        return "中性";
     }
 
     private int countKeywords(String text, List<String> keywords) {
+        String normalized = text.toLowerCase(Locale.ROOT);
         return keywords.stream()
-                .mapToInt(keyword -> text.contains(keyword) ? 1 : 0)
+                .map(keyword -> keyword.toLowerCase(Locale.ROOT))
+                .mapToInt(keyword -> normalized.contains(keyword) ? 1 : 0)
                 .sum();
     }
 
@@ -91,9 +87,10 @@ public class AiAnalysisResultBuilder {
         return rawText == null ? "" : rawText.trim();
     }
 
-    private String removeMarkdownPrefix(String line) {
-        return line.replaceFirst("^#+\\s*", "")
-                .replaceFirst("^[\\-*]\\s*", "")
-                .trim();
+    private String trimToMaxLength(String value, int maxLength) {
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength - 3) + "...";
     }
 }

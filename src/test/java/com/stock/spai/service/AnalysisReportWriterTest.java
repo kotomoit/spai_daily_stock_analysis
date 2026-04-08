@@ -62,6 +62,8 @@ class AnalysisReportWriterTest {
                 .isEqualTo("台積電短線偏多，量價結構維持穩定。");
         assertThat(reportRoot.path("items").get(0).path("context").path("latestDataDate").asText())
                 .isEqualTo("2026-04-07");
+        assertThat(reportRoot.path("items").get(0).path("context").path("priceChange").asText())
+                .isEqualTo("+12.00");
     }
 
     @Test
@@ -84,17 +86,23 @@ class AnalysisReportWriterTest {
     }
 
     private StockAnalysisContext createContext() {
-        return new StockAnalysisContext(
-                "2330",
-                "台積電",
-                "2026-04-01",
-                "[price-data]",
-                "[institutional-data]",
-                "[margin-data]",
-                "摘要提示內容",
-                "2026-04-07 收盤 912.00",
-                "2026-04-07 成交量 32,456,789",
-                "2026-04-07"
-        );
+        StockAnalysisContext context = new StockAnalysisContext();
+        context.setSymbol("2330");
+        context.setName("台積電");
+        context.setStartDate("2026-04-01");
+        context.setPriceDataText("[price-data]");
+        context.setInstitutionalDataText("[institutional-data]");
+        context.setMarginDataText("[margin-data]");
+        context.setPromptSummary("摘要提示內容");
+        context.setLatestPriceSummary("2026-04-07 收盤 912.00");
+        context.setVolumeSummary("2026-04-07 成交量 32,456,789");
+        context.setLatestDataDate("2026-04-07");
+        context.setLatestClosePrice("912.00");
+        context.setPriceChange("+12.00");
+        context.setPriceChangePercent("+1.33%");
+        context.setLatestVolume("32,456,789");
+        context.setForeignInvestorSummary("買賣超 +3,200");
+        context.setMarginSummary("買進 1,250，餘額 18,600，較前日 +450");
+        return context;
     }
 }

@@ -107,6 +107,12 @@ public class LineMessagingService {
         context.setSymbol(stockId);
         context.setLatestPriceSummary("價格摘要待補");
         context.setVolumeSummary("量能摘要待補");
+        context.setLatestClosePrice("價格摘要待補");
+        context.setPriceChange("待補");
+        context.setPriceChangePercent("待補");
+        context.setLatestVolume("量能摘要待補");
+        context.setForeignInvestorSummary("法人摘要待補");
+        context.setMarginSummary("融資摘要待補");
 
         AiAnalysisResult analysisResult = new AiAnalysisResult(
                 stockId,

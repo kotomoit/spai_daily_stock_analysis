@@ -5,7 +5,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 封裝單一股票在分析流程中需要用到的原始資料與上下文資訊。
+ * 股票分析流程中共用的上下文資料，
+ * 供 AI 分析、LINE Flex 顯示與報告輸出共用。
  */
 @Data
 @NoArgsConstructor
@@ -22,4 +23,10 @@ public class StockAnalysisContext {
     private String latestPriceSummary;
     private String volumeSummary;
     private String latestDataDate;
+    private String latestClosePrice;
+    private String priceChange;
+    private String priceChangePercent;
+    private String latestVolume;
+    private String foreignInvestorSummary;
+    private String marginSummary;
 }

@@ -4,28 +4,23 @@ import com.stock.spai.dto.AiAnalysisResult;
 import com.stock.spai.dto.StockAnalysisContext;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
- * 專責組裝 LINE Flex Message payload，避免訊息送出邏輯與畫面資料組裝耦合。
+ * 組裝 LINE Flex Message payload，提供第二版較高資訊密度卡片。
  */
 @Component
 public class LineFlexMessageBuilder {
 
     private static final int ALT_TEXT_MAX_LENGTH = 120;
     private static final int SUMMARY_MAX_LENGTH = 160;
-    private static final List<String> GENERIC_SUMMARY_TITLES = List.of(
-            "分析摘要",
-            "ai分析摘要",
-            "結論摘要",
-            "投資建議",
-            "操作建議",
-            "綜合分析",
-            "總結",
-            "結論"
-    );
+    private static final String POSITIVE_COLOR = "#D9485F";
+    private static final String NEGATIVE_COLOR = "#1C8C5E";
+    private static final String NEUTRAL_COLOR = "#111827";
+    private static final String MUTED_COLOR = "#6B7280";
+    private static final String DEFAULT_SUMMARY = "AI 摘要尚無足夠資訊";
 
     public Map<String, Object> buildProfessionalFlexPayload(String userId, AiAnalysisResult analysisResult) {
         String symbol = resolveSymbol(analysisResult);
@@ -69,7 +64,7 @@ public class LineFlexMessageBuilder {
                                 ),
                                 Map.of(
                                         "type", "text",
-                                        "text", latestDate.isBlank() ? "每日分析通知" : "資料日期：" + latestDate,
+                                        "text", latestDate.isBlank() ? "資料日期待補" : "資料日期：" + latestDate,
                                         "size", "xs",
                                         "color", "#D9E8FF",
                                         "margin", "sm"
@@ -87,34 +82,39 @@ public class LineFlexMessageBuilder {
 
     private List<Object> buildBodyContents(AiAnalysisResult analysisResult, String summary) {
         StockAnalysisContext context = analysisResult == null ? null : analysisResult.getContext();
-        String latestPriceSummary = context == null
-                ? "暫無最新價格摘要"
-                : safeText(context.getLatestPriceSummary(), "暫無最新價格摘要");
-        String volumeSummary = context == null
-                ? "暫無量能摘要"
-                : safeText(context.getVolumeSummary(), "暫無量能摘要");
+        String priceChange = resolvePriceChange(context);
+        String priceChangePercent = resolvePriceChangePercent(context);
+        String foreignInvestorSummary = resolveForeignInvestorSummary(context);
+        String marginSummary = resolveMarginSummary(context);
+        String displayStance = resolveDisplayStance(analysisResult);
 
-        String stance = analysisResult == null ? "" : safeText(analysisResult.getStance(), "");
+        List<Object> contents = new ArrayList<>();
+        contents.add(createSectionTitle("今日重點"));
+        contents.add(createDataRow("收盤價", resolveClosePrice(context), NEUTRAL_COLOR));
+        contents.add(createDataRow("漲跌", priceChange, resolveSignedColor(priceChange)));
+        contents.add(createDataRow("漲跌幅", priceChangePercent, resolveSignedColor(priceChangePercent)));
+        contents.add(createDataRow("成交量", resolveLatestVolume(context), NEUTRAL_COLOR));
+        contents.add(Map.of("type", "separator", "margin", "sm"));
+        contents.add(createSectionTitle("籌碼觀察"));
+        contents.add(createDataRow("外資摘要", foreignInvestorSummary, resolveSignedColor(foreignInvestorSummary)));
+        contents.add(createDataRow("融資摘要", marginSummary, resolveSignedColor(marginSummary)));
+        contents.add(createDataRow("趨勢判斷", displayStance, resolveStanceColor(displayStance)));
+        contents.add(Map.of("type", "separator", "margin", "sm"));
+        contents.add(createSummaryBox(summary));
+        return contents;
+    }
 
-        if (stance.isBlank()) {
-            return List.of(
-                    createDataRow("價格摘要", latestPriceSummary),
-                    createDataRow("量能摘要", volumeSummary),
-                    Map.of("type", "separator", "margin", "sm"),
-                    createSummaryBox(summary)
-            );
-        }
-
-        return List.of(
-                createDataRow("價格摘要", latestPriceSummary),
-                createDataRow("量能摘要", volumeSummary),
-                createDataRow("Stance", stance),
-                Map.of("type", "separator", "margin", "sm"),
-                createSummaryBox(summary)
+    private Map<String, Object> createSectionTitle(String title) {
+        return Map.of(
+                "type", "text",
+                "text", title,
+                "size", "sm",
+                "weight", "bold",
+                "color", "#0B5CAD"
         );
     }
 
-    private Map<String, Object> createDataRow(String label, String value) {
+    private Map<String, Object> createDataRow(String label, String value, String valueColor) {
         return Map.of(
                 "type", "box",
                 "layout", "baseline",
@@ -124,7 +124,7 @@ public class LineFlexMessageBuilder {
                                 "type", "text",
                                 "text", label,
                                 "size", "sm",
-                                "color", "#6B7280",
+                                "color", MUTED_COLOR,
                                 "flex", 3,
                                 "wrap", true
                         ),
@@ -132,7 +132,7 @@ public class LineFlexMessageBuilder {
                                 "type", "text",
                                 "text", value,
                                 "size", "sm",
-                                "color", "#111827",
+                                "color", valueColor,
                                 "weight", "bold",
                                 "flex", 7,
                                 "align", "end",
@@ -171,76 +171,24 @@ public class LineFlexMessageBuilder {
 
     String resolveDisplaySummary(AiAnalysisResult analysisResult) {
         if (analysisResult == null) {
-            return "AI 摘要資訊有限，請搭配完整分析內容判讀。";
+            return DEFAULT_SUMMARY;
         }
 
         String summary = normalize(analysisResult.getSummary());
-        if (isInformativeSummary(summary)) {
+        if (AiSummaryTextHelper.isInformativeSummary(summary)) {
             return trimToMaxLength(summary, SUMMARY_MAX_LENGTH);
         }
 
-        String fallbackFromRawText = extractInformativeLine(analysisResult.getRawText(), summary);
+        String fallbackFromRawText = AiSummaryTextHelper.extractBestSummary(analysisResult.getRawText());
         if (!fallbackFromRawText.isBlank()) {
             return trimToMaxLength(fallbackFromRawText, SUMMARY_MAX_LENGTH);
         }
 
-        return "AI 摘要資訊有限，請搭配完整分析內容判讀。";
-    }
-
-    private String extractInformativeLine(String rawText, String existingSummary) {
-        String normalizedSummary = normalize(existingSummary);
-
-        return normalize(rawText).lines()
-                .map(String::trim)
-                .map(this::removeMarkdownPrefix)
-                .map(String::trim)
-                .filter(line -> !line.isBlank())
-                .filter(line -> !Objects.equals(line, normalizedSummary))
-                .filter(this::isInformativeSummary)
-                .findFirst()
-                .orElse("");
-    }
-
-    private boolean isInformativeSummary(String summary) {
-        String normalized = normalize(summary);
-        if (normalized.isBlank()) {
-            return false;
-        }
-
-        String lowercase = normalized.toLowerCase();
-        if (GENERIC_SUMMARY_TITLES.contains(lowercase)) {
-            return false;
-        }
-
-        if (normalized.length() <= 4) {
-            return false;
-        }
-
-        if (normalized.length() <= 10 && !containsInsightKeyword(normalized)) {
-            return false;
-        }
-
-        return !normalized.matches("^[\\p{IsHan}A-Za-z0-9\\s]+摘要$");
-    }
-
-    private boolean containsInsightKeyword(String text) {
-        return text.contains("偏多")
-                || text.contains("偏空")
-                || text.contains("觀望")
-                || text.contains("留意")
-                || text.contains("支撐")
-                || text.contains("壓力")
-                || text.contains("風險")
-                || text.contains("趨勢")
-                || text.contains("量能")
-                || text.contains("法人")
-                || text.contains("融資")
-                || text.contains("買")
-                || text.contains("賣");
+        return DEFAULT_SUMMARY;
     }
 
     private String buildAltText(String symbol, String name, String summary) {
-        return trimToMaxLength(symbol + " " + name + "：" + summary, ALT_TEXT_MAX_LENGTH);
+        return trimToMaxLength(symbol + " " + name + "｜" + summary, ALT_TEXT_MAX_LENGTH);
     }
 
     private String resolveSymbol(AiAnalysisResult analysisResult) {
@@ -271,10 +219,82 @@ public class LineFlexMessageBuilder {
         return context == null ? "未命名股票" : safeText(context.getName(), "未命名股票");
     }
 
-    private String removeMarkdownPrefix(String text) {
-        return normalize(text)
-                .replaceFirst("^#+\\s*", "")
-                .replaceFirst("^[\\-*]\\s*", "");
+    private String resolveClosePrice(StockAnalysisContext context) {
+        if (context == null) {
+            return "暫無資料";
+        }
+
+        String closePrice = normalize(context.getLatestClosePrice());
+        if (!closePrice.isBlank()) {
+            return closePrice;
+        }
+        return safeText(context.getLatestPriceSummary(), "暫無資料");
+    }
+
+    private String resolvePriceChange(StockAnalysisContext context) {
+        return context == null ? "暫無資料" : safeText(context.getPriceChange(), "暫無資料");
+    }
+
+    private String resolvePriceChangePercent(StockAnalysisContext context) {
+        return context == null ? "暫無資料" : safeText(context.getPriceChangePercent(), "暫無資料");
+    }
+
+    private String resolveLatestVolume(StockAnalysisContext context) {
+        if (context == null) {
+            return "暫無資料";
+        }
+
+        String latestVolume = normalize(context.getLatestVolume());
+        if (!latestVolume.isBlank()) {
+            return latestVolume;
+        }
+        return safeText(context.getVolumeSummary(), "暫無資料");
+    }
+
+    private String resolveForeignInvestorSummary(StockAnalysisContext context) {
+        return context == null ? "暫無外資資料" : safeText(context.getForeignInvestorSummary(), "暫無外資資料");
+    }
+
+    private String resolveMarginSummary(StockAnalysisContext context) {
+        return context == null ? "暫無融資資料" : safeText(context.getMarginSummary(), "暫無融資資料");
+    }
+
+    private String resolveDisplayStance(AiAnalysisResult analysisResult) {
+        String stance = analysisResult == null ? "" : normalize(analysisResult.getStance());
+        if (stance.isBlank()) {
+            return "中性";
+        }
+
+        String lowercase = stance.toLowerCase();
+        if (lowercase.contains("bull") || stance.contains("偏多") || stance.contains("看多")) {
+            return "偏多";
+        }
+        if (lowercase.contains("bear") || stance.contains("偏空") || stance.contains("看空")) {
+            return "偏空";
+        }
+        if (lowercase.contains("neutral") || stance.contains("中立") || stance.contains("中性")) {
+            return "中性";
+        }
+        return stance;
+    }
+
+    private String resolveSignedColor(String value) {
+        String normalized = normalize(value);
+        if (normalized.startsWith("+")) {
+            return POSITIVE_COLOR;
+        }
+        if (normalized.startsWith("-")) {
+            return NEGATIVE_COLOR;
+        }
+        return NEUTRAL_COLOR;
+    }
+
+    private String resolveStanceColor(String stance) {
+        return switch (stance) {
+            case "偏多" -> POSITIVE_COLOR;
+            case "偏空" -> NEGATIVE_COLOR;
+            default -> NEUTRAL_COLOR;
+        };
     }
 
     private String trimToMaxLength(String text, int maxLength) {
