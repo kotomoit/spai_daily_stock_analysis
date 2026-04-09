@@ -15,7 +15,7 @@ on:
     - cron: '30 7 * * 1-5'
 
 concurrency:
-  group: daily-stock-analysis
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -26,8 +26,6 @@ jobs:
     env:
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
-      LINE_MESSAGING_TOKEN: ${{ secrets.LINE_MESSAGING_TOKEN }}
-      LINE_MESSAGING_USER_ID: ${{ secrets.LINE_MESSAGING_USER_ID }}
       STOCK_ANALYSIS_REPORT_OUTPUT_DIR: target/stock-analysis-reports
 
     steps:
@@ -111,6 +109,9 @@ jobs:
 
       - name: 需要發送 LINE 時驗證 LINE secrets
         if: steps.execution-plan.outputs.line_enabled == 'true'
+        env:
+          LINE_MESSAGING_TOKEN: ${{ secrets.LINE_MESSAGING_TOKEN }}
+          LINE_MESSAGING_USER_ID: ${{ secrets.LINE_MESSAGING_USER_ID }}
         run: |
           test -n "${LINE_MESSAGING_TOKEN}" || { echo "Missing LINE_MESSAGING_TOKEN secret"; exit 1; }
           test -n "${LINE_MESSAGING_USER_ID}" || { echo "Missing LINE_MESSAGING_USER_ID secret"; exit 1; }
@@ -125,13 +126,30 @@ jobs:
           STOCK_ANALYSIS_LINE_NOTIFY_ENABLED: 'false'
         run: ./mvnw -B test
 
-      - name: 執行正式分析 runner
+      - name: 執行正式分析 runner（不發送 LINE）
+        if: steps.execution-plan.outputs.line_enabled != 'true'
         env:
           ANALYSIS_TRIGGER_MODE: ${{ steps.execution-plan.outputs.trigger_mode }}
           LINE_ENABLE_REASON: ${{ steps.execution-plan.outputs.line_reason }}
           STOCK_ANALYSIS_RUNNER_ENABLED: 'true'
           STOCK_ANALYSIS_REPORT_ENABLED: 'true'
-          STOCK_ANALYSIS_LINE_NOTIFY_ENABLED: ${{ steps.execution-plan.outputs.line_enabled }}
+          STOCK_ANALYSIS_LINE_NOTIFY_ENABLED: 'false'
+        run: |
+          echo "觸發來源：${ANALYSIS_TRIGGER_MODE}"
+          echo "本次 LINE 發送：${STOCK_ANALYSIS_LINE_NOTIFY_ENABLED}"
+          echo "LINE 判定說明：${LINE_ENABLE_REASON}"
+          ./mvnw -B -DskipTests spring-boot:run '-Dspring-boot.run.arguments=--spring.main.web-application-type=none --spring.devtools.restart.enabled=false --spring.devtools.livereload.enabled=false'
+
+      - name: 執行正式分析 runner（發送 LINE）
+        if: steps.execution-plan.outputs.line_enabled == 'true'
+        env:
+          ANALYSIS_TRIGGER_MODE: ${{ steps.execution-plan.outputs.trigger_mode }}
+          LINE_ENABLE_REASON: ${{ steps.execution-plan.outputs.line_reason }}
+          STOCK_ANALYSIS_RUNNER_ENABLED: 'true'
+          STOCK_ANALYSIS_REPORT_ENABLED: 'true'
+          STOCK_ANALYSIS_LINE_NOTIFY_ENABLED: 'true'
+          LINE_MESSAGING_TOKEN: ${{ secrets.LINE_MESSAGING_TOKEN }}
+          LINE_MESSAGING_USER_ID: ${{ secrets.LINE_MESSAGING_USER_ID }}
         run: |
           echo "觸發來源：${ANALYSIS_TRIGGER_MODE}"
           echo "本次 LINE 發送：${STOCK_ANALYSIS_LINE_NOTIFY_ENABLED}"
