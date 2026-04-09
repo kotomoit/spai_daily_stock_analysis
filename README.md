@@ -138,12 +138,18 @@ env:
 
 ## GitHub Actions workflow
 
-第一版 workflow 已放在 [`.github/workflows/daily-analysis.yml`](.github/workflows/daily-analysis.yml)，目前支援：
+目前正式 workflow 位於 [`.github/workflows/daily-analysis.yml`](.github/workflows/daily-analysis.yml)，支援：
 
 - `workflow_dispatch`：手動觸發
 - `schedule`：排程觸發
 
-其中 `schedule` 目前固定以 `STOCK_ANALYSIS_LINE_NOTIFY_ENABLED=false` 執行，避免第一版尚未完成完整驗證前就固定自動發送 LINE。
+目前策略改為：
+
+- `workflow_dispatch`：維持使用 `send_line` input 決定本次是否發送 LINE
+- `schedule`：固定先跑正式分析與 artifact，是否發送 LINE 改由 `Repository Variable` `SCHEDULED_LINE_ENABLED` 控制
+- workflow 已加入 `concurrency`，避免手動觸發與排程重疊執行，降低重複分析或重複發 LINE 的風險
+
+若 `SCHEDULED_LINE_ENABLED` 未設定或為 `false`，排程仍只會跑分析與 artifact，不會發送 LINE。
 
 ### Repository secrets 設定方式
 
@@ -153,6 +159,20 @@ env:
 - `FINMIND_API_TOKEN`
 - `LINE_MESSAGING_TOKEN`
 - `LINE_MESSAGING_USER_ID`
+
+### Repository variables 設定方式
+
+請到 GitHub repository 的 `Settings > Secrets and variables > Actions`，切到 `Variables`，建立以下 `Repository variable`：
+
+- `SCHEDULED_LINE_ENABLED`
+
+建議值如下：
+
+- `true`：排程執行時允許發送 LINE
+- `false`：排程執行時不發送 LINE
+- 未設定：等同關閉排程 LINE，適合先觀察排程分析與 artifact 是否穩定
+
+這個 variable 屬於非敏感控制開關，可直接在 GitHub Actions 設定頁切換，不需要改 Java 程式碼，也不需要改 workflow 檔。
 
 ### 手動觸發方式
 
@@ -164,7 +184,33 @@ env:
 
 若本次只想驗證分析與 artifact，請保持 `send_line=false`。
 
-若要手動驗證 LINE 通知，才切換成 `send_line=true`。
+若要手動驗證 LINE 通知，才切換成 `send_line=true`。這條路徑會保留，作為排程開啟前後都可用的人工驗證入口。
+
+### Schedule dry-run 驗證方式
+
+若要先驗證排程主流程、但暫時不讓排程自動發 LINE，建議照以下方式進行：
+
+1. 確認 `SCHEDULED_LINE_ENABLED` 未設定，或明確設為 `false`
+2. 等待下一次 `schedule` 觸發
+3. 到該次 Actions run 檢查 summary 與 log
+
+預期結果：
+
+- 觸發來源會顯示為 `schedule`
+- `LINE 判定說明` 會指出 `SCHEDULED_LINE_ENABLED` 未設定或為 `false`
+- JSON report 仍會產出並上傳成 artifact
+
+若想在排程時間到來前先做快速預檢，可先用 `workflow_dispatch` 搭配 `send_line=false` 驗證分析與 artifact 主線；真正的 `schedule` 判定結果，則以下一次排程 run 的 summary 為準。
+
+### 快速回退停用排程 LINE
+
+若排程 LINE 已開啟，但要快速停用，不需要修改 Java 程式碼，也不需要修改 workflow：
+
+1. 到 `Settings > Secrets and variables > Actions > Variables`
+2. 將 `SCHEDULED_LINE_ENABLED` 改成 `false`，或直接刪除
+3. 下一次 `schedule` 觸發時，就會自動回到只跑分析與 artifact、不發 LINE 的模式
+
+若需要更強的保守處置，例如暫時連排程分析都不想跑，才再到 GitHub Actions 頁面停用整個 workflow。
 
 ### Artifact 下載位置
 
@@ -175,6 +221,16 @@ stock-analysis-report-<run_number>
 ```
 
 workflow 會先在 `mvn test` 階段明確關閉 `runner/report`，再於後續 `spring-boot:run` 步驟單獨開啟正式分析，避免測試 lifecycle 誤打真實外部 API。
+
+目前 workflow summary 會額外標示：
+
+- 本次觸發來源是 `workflow_dispatch` 還是 `schedule`
+- 本次 LINE 是否啟用
+- LINE 啟用或未啟用的判定原因
+- JSON report 是否成功產出
+- artifact 名稱與範例檔案
+
+因此若要確認排程 LINE 為何沒有發送，或確認本次是否只是 dry-run，可直接從 run summary 判讀，不需要回頭看 Java 程式碼。
 
 ### 第一版為何先採手動驗證 LINE
 
