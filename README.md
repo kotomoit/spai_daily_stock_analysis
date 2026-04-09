@@ -116,14 +116,33 @@ stock-analysis-report-yyyyMMdd-HHmmss.json
 
 ## GitHub Actions secrets
 
-若要在 GitHub Actions 使用，請將敏感資訊設為 repository secrets，再於 workflow 的 `env` 注入：
+若要在 GitHub Actions 使用，請先建立以下 4 個 repository secrets：
+
+- `GOOGLE_API_KEY`
+- `FINMIND_API_TOKEN`
+- `LINE_MESSAGING_TOKEN`
+- `LINE_MESSAGING_USER_ID`
+
+目前 workflow 的實際做法是：
+
+- `GOOGLE_API_KEY`、`FINMIND_API_TOKEN`：可放在 job-level `env`，供分析主流程使用
+- `LINE_MESSAGING_TOKEN`、`LINE_MESSAGING_USER_ID`：只在真正需要發 LINE 的 step 才注入，避免在不發 LINE 的情境提早暴露
 
 ```yaml
-env:
-  GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-  FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
-  LINE_MESSAGING_TOKEN: ${{ secrets.LINE_MESSAGING_TOKEN }}
-  LINE_MESSAGING_USER_ID: ${{ secrets.LINE_MESSAGING_USER_ID }}
+jobs:
+  daily-analysis:
+    env:
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
+
+    steps:
+      - name: 需要發送 LINE 時才注入 LINE secrets
+        if: steps.execution-plan.outputs.line_enabled == 'true'
+        env:
+          LINE_MESSAGING_TOKEN: ${{ secrets.LINE_MESSAGING_TOKEN }}
+          LINE_MESSAGING_USER_ID: ${{ secrets.LINE_MESSAGING_USER_ID }}
+        run: |
+          echo "only inject LINE secrets when LINE is enabled"
 ```
 
 若 workflow 需要啟動 runner 與 JSON 報告輸出，可再加入：
