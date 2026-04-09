@@ -14,6 +14,10 @@ public class FinMindResponse {
         private String date;
         @com.fasterxml.jackson.annotation.JsonProperty("stock_id")
         private String stockId;
+        @com.fasterxml.jackson.annotation.JsonProperty("stock_name")
+        private String stockName;
+        @com.fasterxml.jackson.annotation.JsonProperty("industry_category")
+        private String industryCategory;
 
         // 價格相關
         private double open;

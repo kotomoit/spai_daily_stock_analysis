@@ -60,6 +60,8 @@ class AnalysisReportWriterTest {
         assertThat(reportRoot.path("items").get(0).path("symbol").asText()).isEqualTo("2330");
         assertThat(reportRoot.path("items").get(0).path("summary").asText())
                 .isEqualTo("台積電短線偏多，量價結構維持穩定。");
+        assertThat(reportRoot.path("items").get(0).path("context").path("industryCategory").asText())
+                .isEqualTo("半導體業");
         assertThat(reportRoot.path("items").get(0).path("context").path("latestDataDate").asText())
                 .isEqualTo("2026-04-07");
         assertThat(reportRoot.path("items").get(0).path("context").path("priceChange").asText())
@@ -89,6 +91,7 @@ class AnalysisReportWriterTest {
         StockAnalysisContext context = new StockAnalysisContext();
         context.setSymbol("2330");
         context.setName("台積電");
+        context.setIndustryCategory("半導體業");
         context.setStartDate("2026-04-01");
         context.setPriceDataText("[price-data]");
         context.setInstitutionalDataText("[institutional-data]");

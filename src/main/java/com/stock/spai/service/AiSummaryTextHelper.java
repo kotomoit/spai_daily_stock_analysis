@@ -19,7 +19,15 @@ final class AiSummaryTextHelper {
             "分析結論",
             "觀察重點",
             "重點整理",
-            "投資建議"
+            "投資建議",
+            "今日重點",
+            "籌碼資金面觀察",
+            "技術面總結",
+            "消息面情報",
+            "財報概要",
+            "基本面",
+            "綜合建議",
+            "風險提示"
     );
 
     private static final List<String> INSIGHT_KEYWORDS = List.of(
@@ -115,7 +123,7 @@ final class AiSummaryTextHelper {
             previous = sanitized;
             sanitized = sanitized
                     .replaceFirst("^\\d+[.、)]\\s*", "")
-                    .replaceFirst("^(AI\\s*)?(分析)?(摘要|結論|分析結論|AI結論|綜合判斷|觀察重點|重點整理|投資建議)\\s*[：:]\\s*", "")
+                    .replaceFirst("^(AI\\s*)?(分析)?(摘要|結論|分析結論|AI結論|綜合判斷|觀察重點|重點整理|投資建議|今日重點|技術面總結|消息面情報|財報概要|基本面|綜合建議|風險提示|籌碼(?:／|/)?資金面觀察)\\s*[：:]\\s*", "")
                     .replaceFirst("^(好的|以下(?:為|是)?(?:本次)?(?:分析)?|綜合來看|整體來看|總結來說|簡單來說)\\s*[，、:：]?\\s*", "")
                     .replaceFirst("^(身為|作為)[^，。；:：]{0,40}[，、]\\s*", "")
                     .replaceFirst("^針對[^，。；:：]{0,20}[，、]\\s*", "")

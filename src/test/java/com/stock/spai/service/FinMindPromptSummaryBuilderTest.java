@@ -18,6 +18,7 @@ class FinMindPromptSummaryBuilderTest {
         String summary = finMindPromptSummaryBuilder.buildSummary(
                 "2330",
                 "台積電",
+                "半導體業",
                 "2026-04-01",
                 createPriceResponse(),
                 createInstitutionalResponse(),
@@ -26,6 +27,7 @@ class FinMindPromptSummaryBuilderTest {
 
         assertTrue(summary.contains("股票代號：2330"));
         assertTrue(summary.contains("股票名稱：台積電"));
+        assertTrue(summary.contains("產業／板塊：半導體業"));
         assertTrue(summary.contains("價格資料重點："));
         assertTrue(summary.contains("最新開高低收：1000.00 / 1015.00 / 995.00 / 1008.00"));
         assertTrue(summary.contains("法人資料重點："));

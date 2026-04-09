@@ -64,9 +64,11 @@ class StockAnalysisFacadeTest {
         when(finMindService.getStockPrice("2330", "2026-04-01")).thenReturn(Mono.just(createResponse()));
         when(finMindService.getInstitutionalInvestors("2330", "2026-04-01")).thenReturn(Mono.just(createResponse()));
         when(finMindService.getMarginData("2330", "2026-04-01")).thenReturn(Mono.just(createResponse()));
+        when(finMindService.getStockInfo("2330")).thenReturn(Mono.just(createStockInfoResponse("半導體業")));
         when(finMindPromptSummaryBuilder.buildSummary(
                 eq("2330"),
                 eq("台積電"),
+                eq("半導體業"),
                 eq("2026-04-01"),
                 any(FinMindResponse.class),
                 any(FinMindResponse.class),
@@ -93,12 +95,14 @@ class StockAnalysisFacadeTest {
         assertEquals("偏多", results.getFirst().getStance());
         assertNotNull(results.getFirst().getContext());
         assertEquals("2026-04-01", results.getFirst().getContext().getStartDate());
+        assertEquals("半導體業", results.getFirst().getContext().getIndustryCategory());
         assertEquals("[]", results.getFirst().getContext().getPriceDataText());
         assertEquals("台積電摘要", results.getFirst().getContext().getPromptSummary());
 
         verify(finMindService).getStockPrice("2330", "2026-04-01");
         verify(finMindService).getInstitutionalInvestors("2330", "2026-04-01");
         verify(finMindService).getMarginData("2330", "2026-04-01");
+        verify(finMindService).getStockInfo("2330");
         verify(finMindService, never()).getStockPrice("2317", "2026-04-01");
         verify(stockAiAnalyzer).analyzeSummary("2330", "台積電摘要");
         verify(aiAnalysisResultBuilder).build(eq("2330"), eq("台積電"), eq("台積電分析結果，偏多看待。"), any());
@@ -108,6 +112,15 @@ class StockAnalysisFacadeTest {
     private FinMindResponse createResponse() {
         FinMindResponse response = new FinMindResponse();
         response.setData(List.of());
+        return response;
+    }
+
+    private FinMindResponse createStockInfoResponse(String industryCategory) {
+        FinMindResponse.StockData stockData = new FinMindResponse.StockData();
+        stockData.setIndustryCategory(industryCategory);
+
+        FinMindResponse response = new FinMindResponse();
+        response.setData(List.of(stockData));
         return response;
     }
 }

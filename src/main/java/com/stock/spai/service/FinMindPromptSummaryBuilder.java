@@ -19,6 +19,7 @@ public class FinMindPromptSummaryBuilder {
      */
     public String buildSummary(String symbol,
                                String name,
+                               String industryCategory,
                                String startDate,
                                FinMindResponse priceResponse,
                                FinMindResponse institutionalResponse,
@@ -26,6 +27,7 @@ public class FinMindPromptSummaryBuilder {
         return String.join("\n",
                 "股票代號：" + safeText(symbol),
                 "股票名稱：" + safeText(name),
+                "產業／板塊：" + safeText(industryCategory),
                 "分析起始日：" + safeText(startDate),
                 buildPriceSummary(priceResponse),
                 buildInstitutionalSummary(institutionalResponse),
@@ -128,7 +130,7 @@ public class FinMindPromptSummaryBuilder {
     }
 
     private String safeText(String value) {
-        return hasText(value) ? value : "未知";
+        return hasText(value) ? value : "目前未提供相關資料";
     }
 
     private String formatDecimal(double value) {

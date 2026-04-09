@@ -22,6 +22,7 @@ class LineFlexMessageBuilderTest {
         StockAnalysisContext context = new StockAnalysisContext();
         context.setSymbol("2330");
         context.setName("台積電");
+        context.setIndustryCategory("半導體業");
         context.setLatestDataDate("2026-04-07");
         context.setLatestClosePrice("912.00");
         context.setPriceChange("+12.00");
@@ -53,9 +54,12 @@ class LineFlexMessageBuilderTest {
         assertFalse(((String) message.get("altText")).contains("好的，以下為本次分析摘要"));
 
         Map<String, Object> contents = getMap(message, "contents");
+        Map<String, Object> header = getMap(contents, "header");
         Map<String, Object> body = getMap(contents, "body");
         List<?> bodyContents = getList(body, "contents");
+        List<?> headerContents = getList(header, "contents");
 
+        assertEquals("產業別：半導體業", castMap(headerContents.get(1)).get("text"));
         assertEquals("912.00", findRowValue(bodyContents, "收盤價"));
         assertEquals("+12.00", findRowValue(bodyContents, "漲跌"));
         assertEquals("+1.33%", findRowValue(bodyContents, "漲跌幅"));

@@ -81,9 +81,11 @@ public class StockAnalysisFacade {
         return Mono.zip(
                         finMindService.getStockPrice(item.getSymbol(), startDate),
                         finMindService.getInstitutionalInvestors(item.getSymbol(), startDate),
-                        finMindService.getMarginData(item.getSymbol(), startDate)
+                        finMindService.getMarginData(item.getSymbol(), startDate),
+                        finMindService.getStockInfo(item.getSymbol())
+                                .onErrorResume(ex -> Mono.just(emptyResponse()))
                 )
-                .map(tuple -> buildContext(item, startDate, tuple.getT1(), tuple.getT2(), tuple.getT3()))
+                .map(tuple -> buildContext(item, startDate, tuple.getT1(), tuple.getT2(), tuple.getT3(), tuple.getT4()))
                 .blockOptional()
                 .orElseThrow(() -> new IllegalStateException("無法建立股票分析資料: " + item.getSymbol()));
     }
@@ -92,10 +94,12 @@ public class StockAnalysisFacade {
                                               String startDate,
                                               FinMindResponse priceResponse,
                                               FinMindResponse institutionalResponse,
-                                              FinMindResponse marginResponse) {
+                                              FinMindResponse marginResponse,
+                                              FinMindResponse stockInfoResponse) {
         StockAnalysisContext context = new StockAnalysisContext();
         context.setSymbol(item.getSymbol());
         context.setName(item.getName());
+        context.setIndustryCategory(resolveIndustryCategory(stockInfoResponse));
         context.setStartDate(startDate);
         context.setPriceDataText(convertResponseDataToText(priceResponse));
         context.setInstitutionalDataText(convertResponseDataToText(institutionalResponse));
@@ -103,6 +107,7 @@ public class StockAnalysisFacade {
         context.setPromptSummary(finMindPromptSummaryBuilder.buildSummary(
                 item.getSymbol(),
                 item.getName(),
+                context.getIndustryCategory(),
                 startDate,
                 priceResponse,
                 institutionalResponse,
@@ -128,6 +133,27 @@ public class StockAnalysisFacade {
             return "[]";
         }
         return response.getData().toString();
+    }
+
+    private String resolveIndustryCategory(FinMindResponse response) {
+        if (response == null || response.getData() == null || response.getData().isEmpty()) {
+            return "";
+        }
+
+        return response.getData().stream()
+                .map(FinMindResponse.StockData::getIndustryCategory)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .reduce((first, second) -> first + " / " + second)
+                .orElse("");
+    }
+
+    private FinMindResponse emptyResponse() {
+        FinMindResponse response = new FinMindResponse();
+        response.setData(List.of());
+        return response;
     }
 
     private String buildLatestPriceSummary(FinMindResponse response) {

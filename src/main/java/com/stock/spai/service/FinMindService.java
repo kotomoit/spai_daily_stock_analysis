@@ -31,6 +31,19 @@ public class FinMindService {
         return fetchFromFinMind("TaiwanStockInstitutionalInvestorsBuySell", stockId, startDate);
     }
 
+    // 補充基本資料 (dataset: TaiwanStockInfo)，供產業別等欄位後續使用
+    public Mono<FinMindResponse> getStockInfo(String stockId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/data")
+                        .queryParam("dataset", "TaiwanStockInfo")
+                        .queryParam("data_id", stockId)
+                        .queryParam("token", apiToken)
+                        .build())
+                .retrieve()
+                .bodyToMono(FinMindResponse.class);
+    }
+
     // 封裝重複的 WebClient 邏輯
     private Mono<FinMindResponse> fetchFromFinMind(String dataset, String stockId, String startDate) {
         return webClient.get()

@@ -45,6 +45,7 @@ public class LineFlexMessageBuilder {
                                             String summary) {
         StockAnalysisContext context = analysisResult == null ? null : analysisResult.getContext();
         String latestDate = context == null ? "" : safeText(context.getLatestDataDate(), "");
+        String industryCategory = context == null ? "" : normalize(context.getIndustryCategory());
 
         return Map.of(
                 "type", "bubble",
@@ -53,23 +54,7 @@ public class LineFlexMessageBuilder {
                         "layout", "vertical",
                         "backgroundColor", "#0B5CAD",
                         "paddingAll", "16px",
-                        "contents", List.of(
-                                Map.of(
-                                        "type", "text",
-                                        "text", symbol + " " + name,
-                                        "weight", "bold",
-                                        "size", "lg",
-                                        "color", "#FFFFFF",
-                                        "wrap", true
-                                ),
-                                Map.of(
-                                        "type", "text",
-                                        "text", latestDate.isBlank() ? "資料日期待補" : "資料日期：" + latestDate,
-                                        "size", "xs",
-                                        "color", "#D9E8FF",
-                                        "margin", "sm"
-                                )
-                        )
+                        "contents", buildHeaderContents(symbol, name, industryCategory, latestDate)
                 ),
                 "body", Map.of(
                         "type", "box",
@@ -78,6 +63,39 @@ public class LineFlexMessageBuilder {
                         "contents", buildBodyContents(analysisResult, summary)
                 )
         );
+    }
+
+    private List<Object> buildHeaderContents(String symbol,
+                                             String name,
+                                             String industryCategory,
+                                             String latestDate) {
+        List<Object> contents = new ArrayList<>();
+        contents.add(Map.of(
+                "type", "text",
+                "text", symbol + " " + name,
+                "weight", "bold",
+                "size", "lg",
+                "color", "#FFFFFF",
+                "wrap", true
+        ));
+        if (!industryCategory.isBlank()) {
+            contents.add(Map.of(
+                    "type", "text",
+                    "text", "產業別：" + industryCategory,
+                    "size", "xs",
+                    "color", "#D9E8FF",
+                    "margin", "sm",
+                    "wrap", true
+            ));
+        }
+        contents.add(Map.of(
+                "type", "text",
+                "text", latestDate.isBlank() ? "資料日期待補" : "資料日期：" + latestDate,
+                "size", "xs",
+                "color", "#D9E8FF",
+                "margin", industryCategory.isBlank() ? "sm" : "md"
+        ));
+        return contents;
     }
 
     private List<Object> buildBodyContents(AiAnalysisResult analysisResult, String summary) {

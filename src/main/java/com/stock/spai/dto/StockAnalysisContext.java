@@ -15,6 +15,7 @@ public class StockAnalysisContext {
 
     private String symbol;
     private String name;
+    private String industryCategory;
     private String startDate;
     private String priceDataText;
     private String institutionalDataText;

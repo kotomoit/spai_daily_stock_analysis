@@ -57,6 +57,7 @@ public record AnalysisReport(
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public record AnalysisReportContext(
             String startDate,
+            String industryCategory,
             String latestDataDate,
             String latestClosePrice,
             String priceChange,
@@ -79,6 +80,7 @@ public record AnalysisReport(
 
             return new AnalysisReportContext(
                     safeText(context.getStartDate()),
+                    safeText(context.getIndustryCategory()),
                     safeText(context.getLatestDataDate()),
                     safeText(context.getLatestClosePrice()),
                     safeText(context.getPriceChange()),
