@@ -25,6 +25,14 @@ $env:JAVA_HOME = 'C:\OpenSDKs\jdk-21.0.2'
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 ```
 
+若 PowerShell 當前主控台不是 UTF-8，讀取 `README`、workflow 或其他 UTF-8 檔案時可能出現亂碼，建議同一個對話先補上：
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+```
+
 再補上本機需要的敏感環境變數：
 
 ```powershell
@@ -174,6 +182,43 @@ env:
 
 這個 variable 屬於非敏感控制開關，可直接在 GitHub Actions 設定頁切換，不需要改 Java 程式碼，也不需要改 workflow 檔。
 
+### 正式啟用排程 LINE 前最小檢查清單
+
+建議在正式打開 `SCHEDULED_LINE_ENABLED=true` 前，至少先確認以下事項：
+
+- `GOOGLE_API_KEY`、`FINMIND_API_TOKEN`、`LINE_MESSAGING_TOKEN`、`LINE_MESSAGING_USER_ID` 都已存在於 repository secrets
+- 最近一次 `workflow_dispatch` 搭配 `send_line=true` 已能成功送出 LINE
+- 最近一次 `workflow_dispatch` 搭配 `send_line=false` 或最近一次 `schedule` dry-run 已能成功產出 JSON report 與 artifact
+- 已確認目前 `schedule` 為 GitHub Actions 的 UTC cron `30 7 * * 1-5`，換算台北時間約為平日 `15:30`
+- 已確認要接收通知的 LINE 帳號、token 與實際接收情境都正確，避免一啟用就送到錯誤對象
+
+### 正式啟用排程 LINE 建議節奏
+
+建議啟用節奏如下：
+
+1. 先確認 `Repository Variable` `SCHEDULED_LINE_ENABLED` 目前為 `false`，或暫時未設定
+2. 先手動執行一次 `workflow_dispatch` 並設 `send_line=false`，確認分析主線、summary 與 artifact 都正常
+3. 再手動執行一次 `workflow_dispatch` 並設 `send_line=true`，確認 LINE 實際可送達且內容合理
+4. 確認前兩步都穩定後，再把 `SCHEDULED_LINE_ENABLED` 改成 `true`
+5. 觀察前幾個交易日的 `run summary`、artifact 與 LINE 實際送達狀況
+6. 若有異常，立即把 `SCHEDULED_LINE_ENABLED` 改回 `false` 或直接刪除
+
+這個節奏的重點是先用手動路徑驗證「能不能送」與「送了長什麼樣」，再把相同主流程交給排程自動化。
+
+### 手動驗證路徑與排程啟用途徑差異
+
+兩條路徑共用同一套分析、報告輸出與 LINE 發送主流程，差異只在觸發來源與 LINE 開關判定來源：
+
+| 項目 | 手動驗證路徑 | 排程啟用途徑 |
+| --- | --- | --- |
+| 觸發方式 | `workflow_dispatch` | `schedule` |
+| LINE 開關來源 | `send_line` input | `Repository Variable` `SCHEDULED_LINE_ENABLED` |
+| 建議用途 | 驗證分析、artifact、LINE 內容與收件設定 | 正式自動執行與日常通知 |
+| 建議啟用時機 | 啟用前與啟用後都可當人工驗證入口 | 確認手動路徑穩定後再打開 |
+| 快速停用方式 | 下次手動改成 `send_line=false` 即可 | 把 `SCHEDULED_LINE_ENABLED` 改回 `false` 或刪除 |
+
+因此這一輪正式啟用排程 LINE，並不需要改 Java 流程；真正要管控的是哪一條觸發路徑有權限把既有 LINE 發送開關打開。
+
 ### 手動觸發方式
 
 1. 進入 GitHub repository 的 `Actions`
@@ -201,6 +246,19 @@ env:
 - JSON report 仍會產出並上傳成 artifact
 
 若想在排程時間到來前先做快速預檢，可先用 `workflow_dispatch` 搭配 `send_line=false` 驗證分析與 artifact 主線；真正的 `schedule` 判定結果，則以下一次排程 run 的 summary 為準。
+
+### 正式啟用後建議觀察
+
+正式把 `SCHEDULED_LINE_ENABLED` 打開後，建議至少連續觀察前幾個交易日的以下結果：
+
+- `執行前摘要` 是否顯示 `觸發來源：schedule`
+- `執行前摘要` 與 `執行結果` 是否都顯示 `本次 LINE 發送：true`
+- `LINE 判定說明` 是否明確指出 `schedule` 且 `SCHEDULED_LINE_ENABLED=true`
+- JSON report 是否有成功產出，artifact 名稱是否正常
+- LINE 是否在預期時段送達，且內容與同次 run 的 artifact 可合理對照
+- 是否出現重複通知、未送達、artifact 成功但 LINE 失敗，或 LINE 成功但內容異常等情況
+
+若只是想確認排程是否真的走到「可發 LINE」分支，優先看 `run summary` 即可；若要追查內容或失敗原因，再回頭比對 log 與下載 artifact。
 
 ### 快速回退停用排程 LINE
 
