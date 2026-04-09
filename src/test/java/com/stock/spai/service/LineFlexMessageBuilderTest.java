@@ -18,7 +18,7 @@ class LineFlexMessageBuilderTest {
     private final LineFlexMessageBuilder builder = new LineFlexMessageBuilder();
 
     @Test
-    void buildProfessionalFlexPayload_shouldShowExpandedV2FieldsAndMeaningfulSummary() {
+    void buildProfessionalFlexPayload_shouldPreferSectionBasedSummaryAndCleanMarkdown() {
         StockAnalysisContext context = new StockAnalysisContext();
         context.setSymbol("2330");
         context.setName("台積電");
@@ -35,9 +35,16 @@ class LineFlexMessageBuilderTest {
                 "2330",
                 "台積電",
                 """
-                ## AI 分析摘要
+                ## 綜合建議
+                **結論：偏多**
                 好的，以下為本次分析摘要。
-                量能回溫且收盤站穩短期均線，短線偏多，但外資買盤延續性仍需觀察。
+                量能回溫且收盤站穩短期均線，短線仍由多方主導，但不宜追高。
+
+                ## 技術面總結
+                * 價格維持在短中期均線之上，量能回溫，技術面仍偏多。
+
+                ## 風險提示
+                - 若外資買盤無法延續，或量能再度收斂，漲勢可能轉為高檔震盪。
                 """,
                 "AI 分析摘要",
                 "偏多",
@@ -50,8 +57,9 @@ class LineFlexMessageBuilderTest {
 
         Map<String, Object> message = getFirstMessage(payload);
         assertEquals("flex", message.get("type"));
-        assertTrue(((String) message.get("altText")).contains("量能回溫且收盤站穩短期均線"));
+        assertTrue(((String) message.get("altText")).contains("結論偏多"));
         assertFalse(((String) message.get("altText")).contains("好的，以下為本次分析摘要"));
+        assertFalse(((String) message.get("altText")).contains("**"));
 
         Map<String, Object> contents = getMap(message, "contents");
         Map<String, Object> header = getMap(contents, "header");
@@ -71,7 +79,10 @@ class LineFlexMessageBuilderTest {
         Map<String, Object> summaryBox = castMap(bodyContents.get(bodyContents.size() - 1));
         List<?> summaryContents = getList(summaryBox, "contents");
         assertEquals("AI 結論摘要", castMap(summaryContents.get(0)).get("text"));
-        assertEquals("量能回溫且收盤站穩短期均線，短線偏多，但外資買盤延續性仍需觀察。", castMap(summaryContents.get(1)).get("text"));
+        assertEquals(
+                "結論偏多，量能回溫且收盤站穩短期均線，短線仍由多方主導，但不宜追高。 價格維持在短中期均線之上，量能回溫，技術面仍偏多。 若外資買盤無法延續，或量能再度收斂，漲勢可能轉為高檔震盪。",
+                castMap(summaryContents.get(1)).get("text")
+        );
     }
 
     @SuppressWarnings("unchecked")

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @Tag("unit")
 class AiAnalysisResultBuilderTest {
@@ -13,7 +14,7 @@ class AiAnalysisResultBuilderTest {
     private final AiAnalysisResultBuilder aiAnalysisResultBuilder = new AiAnalysisResultBuilder();
 
     @Test
-    void build_shouldSkipGenericOpeningAndKeepInformativeSummary_whenRawTextContainsBullishSignal() {
+    void build_shouldBuildLayeredSummaryFromFixedSectionsAndKeepStanceAligned() {
         StockAnalysisContext context = new StockAnalysisContext();
         context.setSymbol("2330");
         context.setName("台積電");
@@ -23,18 +24,32 @@ class AiAnalysisResultBuilderTest {
                 "台積電",
                 """
                 ## 今日重點
-                今日重點：量能回溫且收盤站穩月線，短線偏多，但仍要留意高檔震盪風險。
+                - 短線出現反彈，但仍未改變整體整理格局。
 
                 ## 綜合建議
-                結論：偏多
+                **結論：偏空**
+                好的，以下為本次分析摘要。
+                反彈暫時視為跌深後修正，上方仍有明顯賣壓，短線操作宜保守。
+
+                ## 技術面總結
+                * 雖有短線反彈，但股價仍在季線下方，量能未明顯放大，技術面偏弱。
+                * 近期若無法站回前波壓力區，趨勢仍以弱勢整理看待。
+
+                ## 風險提示
+                - 若外資賣壓擴大或失守前低，波動可能進一步放大。
                 """,
                 context
         );
 
         assertEquals("2330", result.getSymbol());
         assertEquals("台積電", result.getName());
-        assertEquals("量能回溫且收盤站穩月線，短線偏多，但仍要留意高檔震盪風險。", result.getSummary());
-        assertEquals("偏多", result.getStance());
+        assertEquals(
+                "結論偏空，反彈暫時視為跌深後修正，上方仍有明顯賣壓，短線操作宜保守。 雖有短線反彈，但股價仍在季線下方，量能未明顯放大，技術面偏弱。 若外資賣壓擴大或失守前低，波動可能進一步放大。",
+                result.getSummary()
+        );
+        assertFalse(result.getSummary().contains("**"));
+        assertFalse(result.getSummary().contains("好的"));
+        assertEquals("偏空", result.getStance());
         assertEquals(context, result.getContext());
     }
 }

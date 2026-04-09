@@ -13,7 +13,7 @@ import java.util.Locale;
 @Component
 public class AiAnalysisResultBuilder {
 
-    private static final int SUMMARY_MAX_LENGTH = 120;
+    private static final int SUMMARY_MAX_LENGTH = 160;
 
     private static final List<String> BULLISH_KEYWORDS = List.of(
             "偏多", "看多", "多方", "上攻", "續強", "轉強", "突破", "買盤", "量增", "站穩"
@@ -27,23 +27,38 @@ public class AiAnalysisResultBuilder {
      * 依據 AI 原始文字建立分析結果，包含摘要與立場。
      */
     public AiAnalysisResult build(String symbol, String name, String rawText, StockAnalysisContext context) {
+        String stance = detectStance(rawText);
         return new AiAnalysisResult(
                 symbol,
                 name,
                 rawText,
-                buildSummary(rawText),
-                detectStance(rawText),
+                buildSummary(rawText, stance),
+                stance,
                 context
         );
     }
 
     /**
-     * 從 AI 回覆中挑出第一句真正有資訊量的重點句。
+     * 從 AI 回覆中萃取適合 LINE 閱讀的 2 至 3 句短摘要。
      */
     String buildSummary(String rawText) {
+        return buildSummary(rawText, detectStance(rawText));
+    }
+
+    private String buildSummary(String rawText, String stance) {
         String normalizedText = normalize(rawText);
         if (normalizedText.isEmpty()) {
             return "暫無 AI 分析摘要";
+        }
+
+        String structuredSummary = AiSummaryTextHelper.buildStructuredSummary(
+                normalizedText,
+                stance,
+                3,
+                SUMMARY_MAX_LENGTH
+        );
+        if (!structuredSummary.isBlank()) {
+            return structuredSummary;
         }
 
         String bestSummary = AiSummaryTextHelper.extractBestSummary(normalizedText);
@@ -51,7 +66,9 @@ public class AiAnalysisResultBuilder {
             return trimToMaxLength(normalizedText, SUMMARY_MAX_LENGTH);
         }
 
-        return trimToMaxLength(bestSummary, SUMMARY_MAX_LENGTH);
+        return trimToMaxLength(AiSummaryTextHelper.containsInsightKeyword(bestSummary)
+                ? bestSummary
+                : AiSummaryTextHelper.buildStructuredSummary(bestSummary, stance, 1, SUMMARY_MAX_LENGTH), SUMMARY_MAX_LENGTH);
     }
 
     /**
@@ -61,6 +78,11 @@ public class AiAnalysisResultBuilder {
         String normalizedText = normalize(rawText);
         if (normalizedText.isEmpty()) {
             return "中性";
+        }
+
+        String explicitStance = AiSummaryTextHelper.extractExplicitStance(normalizedText);
+        if (!explicitStance.isBlank()) {
+            return explicitStance;
         }
 
         int bullishScore = countKeywords(normalizedText, BULLISH_KEYWORDS);

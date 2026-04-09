@@ -192,6 +192,16 @@ public class LineFlexMessageBuilder {
             return DEFAULT_SUMMARY;
         }
 
+        String structuredSummary = AiSummaryTextHelper.buildStructuredSummary(
+                analysisResult.getRawText(),
+                analysisResult.getStance(),
+                3,
+                SUMMARY_MAX_LENGTH
+        );
+        if (AiSummaryTextHelper.isInformativeSummary(structuredSummary)) {
+            return trimToMaxLength(structuredSummary, SUMMARY_MAX_LENGTH);
+        }
+
         String summary = normalize(analysisResult.getSummary());
         if (AiSummaryTextHelper.isInformativeSummary(summary)) {
             return trimToMaxLength(summary, SUMMARY_MAX_LENGTH);
@@ -289,6 +299,9 @@ public class LineFlexMessageBuilder {
         }
         if (lowercase.contains("bear") || stance.contains("偏空") || stance.contains("看空")) {
             return "偏空";
+        }
+        if (lowercase.contains("wait") || stance.contains("觀望")) {
+            return "觀望";
         }
         if (lowercase.contains("neutral") || stance.contains("中立") || stance.contains("中性")) {
             return "中性";
