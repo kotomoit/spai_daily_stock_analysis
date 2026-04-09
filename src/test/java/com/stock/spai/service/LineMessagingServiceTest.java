@@ -110,7 +110,7 @@ class LineMessagingServiceTest {
 
         Map<String, Object> summaryBox = castMap(bodyContents.get(bodyContents.size() - 1));
         List<?> summaryContents = getList(summaryBox, "contents");
-        assertEquals("短線量能回溫，整體偏多，但須留意高檔震盪。", castMap(summaryContents.get(1)).get("text"));
+        assertEquals("結論偏多，短線量能回溫，整體偏多，但須留意高檔震盪。", castMap(summaryContents.get(1)).get("text"));
     }
 
     @SuppressWarnings("unchecked")

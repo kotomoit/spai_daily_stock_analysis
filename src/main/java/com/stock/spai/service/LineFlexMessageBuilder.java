@@ -26,6 +26,7 @@ public class LineFlexMessageBuilder {
         String symbol = resolveSymbol(analysisResult);
         String name = resolveName(analysisResult);
         String summary = resolveDisplaySummary(analysisResult);
+        String cardSummary = formatSummaryForCard(summary);
 
         return Map.of(
                 "to", safeText(userId, ""),
@@ -33,7 +34,7 @@ public class LineFlexMessageBuilder {
                         Map.of(
                                 "type", "flex",
                                 "altText", buildAltText(symbol, name, summary),
-                                "contents", buildBubble(analysisResult, symbol, name, summary)
+                                "contents", buildBubble(analysisResult, symbol, name, cardSummary)
                         )
                 )
         );
@@ -185,6 +186,10 @@ public class LineFlexMessageBuilder {
                         )
                 )
         );
+    }
+
+    private String formatSummaryForCard(String summary) {
+        return normalize(summary).replaceAll("(?<=[。！？!?；;])\\s+", "\n");
     }
 
     String resolveDisplaySummary(AiAnalysisResult analysisResult) {

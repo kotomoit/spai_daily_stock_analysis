@@ -80,7 +80,7 @@ class LineFlexMessageBuilderTest {
         List<?> summaryContents = getList(summaryBox, "contents");
         assertEquals("AI 結論摘要", castMap(summaryContents.get(0)).get("text"));
         assertEquals(
-                "結論偏多，量能回溫且收盤站穩短期均線，短線仍由多方主導，但不宜追高。 價格維持在短中期均線之上，量能回溫，技術面仍偏多。 若外資買盤無法延續，或量能再度收斂，漲勢可能轉為高檔震盪。",
+                "結論偏多，量能回溫且收盤站穩短期均線，短線仍由多方主導，但不宜追高。\n理由是，價格維持在短中期均線之上，量能回溫，技術面仍偏多。\n風險是，若外資買盤無法延續，或量能再度收斂，漲勢可能轉為高檔震盪。",
                 castMap(summaryContents.get(1)).get("text")
         );
     }

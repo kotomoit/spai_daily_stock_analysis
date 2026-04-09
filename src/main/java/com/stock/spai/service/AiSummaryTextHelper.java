@@ -14,12 +14,36 @@ import java.util.regex.Pattern;
  */
 final class AiSummaryTextHelper {
 
+    private enum SummarySentenceRole {
+        CONCLUSION,
+        REASON,
+        RISK
+    }
+
     private static final Pattern SECTION_TITLE_PATTERN = Pattern.compile("^#{2,6}\\s*(.+?)\\s*$");
     private static final Pattern EXPLICIT_STANCE_PATTERN = Pattern.compile("結論\\s*[：:]\\s*(偏多|中性|偏空|觀望)");
+    private static final Pattern NUMERIC_TOKEN_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?(?:%|％|元|點|張|股|日|週|月|季|倍|萬|億)?");
 
     private static final List<String> SUMMARY_SECTION_TITLES = List.of(
             "綜合建議",
             "技術面總結",
+            "籌碼資金面觀察",
+            "風險提示"
+    );
+
+    private static final List<String> REASON_SECTION_TITLES = List.of(
+            "技術面總結",
+            "籌碼資金面觀察"
+    );
+
+    private static final List<String> FALLBACK_SECTION_TITLES = List.of(
+            "綜合建議",
+            "技術面總結",
+            "籌碼資金面觀察",
+            "今日重點",
+            "消息面情報",
+            "財報概要",
+            "基本面",
             "風險提示"
     );
 
@@ -84,8 +108,20 @@ final class AiSummaryTextHelper {
             "中性", "震盪", "整理", "區間", "盤整", "觀察", "拉鋸"
     );
 
+    private static final List<String> CONCLUSION_HINT_KEYWORDS = List.of(
+            "建議", "看待", "操作", "偏多", "偏空", "中性", "觀望", "不宜追高", "宜保守"
+    );
+
+    private static final List<String> REASON_HINT_KEYWORDS = List.of(
+            "量能", "均線", "技術面", "外資", "籌碼", "融資", "買盤", "賣壓", "支撐", "壓力", "趨勢", "站穩", "站回"
+    );
+
     private static final List<String> RISK_HINT_KEYWORDS = List.of(
             "風險", "留意", "注意", "提防", "若", "一旦", "失守", "跌破", "轉弱", "回落"
+    );
+
+    private static final List<String> CRITICAL_LEVEL_KEYWORDS = List.of(
+            "支撐", "壓力", "前低", "前高", "關卡", "季線", "月線", "年線", "站回", "站穩", "失守", "跌破"
     );
 
     private AiSummaryTextHelper() {
@@ -98,20 +134,32 @@ final class AiSummaryTextHelper {
         }
 
         Map<String, String> sections = extractSections(normalizedText);
-        String resolvedStance = normalize(stance);
-        List<String> summarySentences = new ArrayList<>();
+        List<String> allCandidates = extractCandidateSentences(normalizedText);
+        String resolvedStance = resolveStance(stance, normalizedText);
 
-        appendDistinct(summarySentences, buildConclusionSentence(sections.get("綜合建議"), resolvedStance));
-        appendDistinct(summarySentences, extractPreferredSentence(sections.get("技術面總結"), resolvedStance, false));
-        appendDistinct(summarySentences, buildRiskSentence(sections.get("風險提示")));
+        String conclusionCandidate = selectConclusionCandidate(sections.get("綜合建議"), resolvedStance, allCandidates);
+        String reasonCandidate = selectReasonCandidate(sections, resolvedStance, allCandidates, List.of(conclusionCandidate));
+        String riskCandidate = selectRiskCandidate(sections.get("風險提示"), allCandidates, List.of(conclusionCandidate, reasonCandidate));
+
+        List<String> summarySentences = new ArrayList<>();
+        appendDistinct(summarySentences, formatConclusionSentence(conclusionCandidate, resolvedStance));
+        appendDistinct(summarySentences, formatReasonSentence(reasonCandidate));
+        appendDistinct(summarySentences, formatRiskSentence(riskCandidate));
 
         if (summarySentences.size() < 2) {
             for (String sectionTitle : SUMMARY_SECTION_TITLES) {
-                appendDistinct(summarySentences, extractPreferredSentence(
-                        sections.get(sectionTitle),
-                        resolvedStance,
-                        "風險提示".equals(sectionTitle)
-                ));
+                String candidate = switch (sectionTitle) {
+                    case "綜合建議" -> selectConclusionCandidate(sections.get(sectionTitle), resolvedStance, allCandidates);
+                    case "風險提示" -> selectRiskCandidate(sections.get(sectionTitle), allCandidates, List.of(conclusionCandidate, reasonCandidate, riskCandidate));
+                    default -> selectBestCandidate(
+                            extractCandidateSentences(sections.get(sectionTitle)),
+                            resolvedStance,
+                            SummarySentenceRole.REASON,
+                            List.of(conclusionCandidate, reasonCandidate, riskCandidate),
+                            false
+                    );
+                };
+                appendDistinct(summarySentences, formatByRole(sectionTitle, candidate, resolvedStance));
                 if (summarySentences.size() >= maxSentences) {
                     break;
                 }
@@ -119,11 +167,14 @@ final class AiSummaryTextHelper {
         }
 
         if (summarySentences.size() < 2) {
-            for (String candidate : extractCandidateSentences(normalizedText)) {
-                if (!isSentenceCompatibleWithStance(candidate, resolvedStance) && !summarySentences.isEmpty()) {
+            for (String candidate : allCandidates) {
+                if (isSameCandidate(candidate, conclusionCandidate, reasonCandidate, riskCandidate)) {
                     continue;
                 }
-                appendDistinct(summarySentences, ensureSentenceEnding(candidate));
+                String formattedSentence = summarySentences.isEmpty()
+                        ? formatConclusionSentence(candidate, resolvedStance)
+                        : formatReasonSentence(candidate);
+                appendDistinct(summarySentences, formattedSentence);
                 if (summarySentences.size() >= maxSentences) {
                     break;
                 }
@@ -176,62 +227,222 @@ final class AiSummaryTextHelper {
                 .anyMatch(comparable::contains);
     }
 
-    private static String buildConclusionSentence(String sectionText, String stance) {
-        String normalizedSection = normalize(sectionText);
-        if (normalizedSection.isBlank()) {
-            return "";
+    private static String resolveStance(String stance, String rawText) {
+        String normalizedStance = normalize(stance);
+        if (!normalizedStance.isBlank()) {
+            return normalizedStance;
+        }
+        return extractExplicitStance(rawText);
+    }
+
+    private static String selectConclusionCandidate(String sectionText, String stance, List<String> fallbackCandidates) {
+        List<String> preferredCandidates = extractCandidateSentences(sectionText);
+        String selected = selectBestCandidate(
+                preferredCandidates,
+                stance,
+                SummarySentenceRole.CONCLUSION,
+                List.of(),
+                false
+        );
+        if (!selected.isBlank()) {
+            return selected;
         }
 
-        String explicitStance = extractExplicitStance(normalizedSection);
-        String resolvedStance = explicitStance.isBlank() ? normalize(stance) : explicitStance;
+        return selectBestCandidate(
+                fallbackCandidates,
+                stance,
+                SummarySentenceRole.CONCLUSION,
+                List.of(),
+                false
+        );
+    }
 
-        List<String> candidates = extractCandidateSentences(normalizedSection).stream()
-                .filter(sentence -> !normalizeComparable(sentence).equals(normalizeComparable(resolvedStance)))
-                .filter(sentence -> isSentenceCompatibleWithStance(sentence, resolvedStance))
-                .toList();
+    private static String selectReasonCandidate(Map<String, String> sections,
+                                                String stance,
+                                                List<String> fallbackCandidates,
+                                                List<String> excludedCandidates) {
+        for (String title : REASON_SECTION_TITLES) {
+            String selected = selectBestCandidate(
+                    extractCandidateSentences(sections.get(title)),
+                    stance,
+                    SummarySentenceRole.REASON,
+                    excludedCandidates,
+                    false
+            );
+            if (!selected.isBlank()) {
+                return selected;
+            }
+        }
 
-        String reasonSentence = candidates.stream().findFirst().orElse("");
+        return selectBestCandidate(
+                fallbackCandidates,
+                stance,
+                SummarySentenceRole.REASON,
+                excludedCandidates,
+                true
+        );
+    }
+
+    private static String selectRiskCandidate(String sectionText,
+                                              List<String> fallbackCandidates,
+                                              List<String> excludedCandidates) {
+        String selected = selectBestCandidate(
+                extractCandidateSentences(sectionText),
+                "",
+                SummarySentenceRole.RISK,
+                excludedCandidates,
+                false
+        );
+        if (!selected.isBlank()) {
+            return selected;
+        }
+
+        return selectBestCandidate(
+                fallbackCandidates,
+                "",
+                SummarySentenceRole.RISK,
+                excludedCandidates,
+                true
+        );
+    }
+
+    private static String selectBestCandidate(List<String> candidates,
+                                              String stance,
+                                              SummarySentenceRole role,
+                                              List<String> excludedCandidates,
+                                              boolean requireRoleHint) {
+        String selected = "";
+        int bestScore = Integer.MIN_VALUE;
+
+        for (String candidate : candidates) {
+            if (candidate.isBlank() || isSameCandidate(candidate, excludedCandidates.toArray(String[]::new))) {
+                continue;
+            }
+
+            if (role != SummarySentenceRole.RISK && !isSentenceCompatibleWithStance(candidate, stance)) {
+                continue;
+            }
+
+            if (requireRoleHint && !containsRoleHint(candidate, role)) {
+                continue;
+            }
+
+            int score = scoreCandidate(candidate, role, stance);
+            if (score > bestScore) {
+                bestScore = score;
+                selected = candidate;
+            }
+        }
+
+        return selected;
+    }
+
+    private static int scoreCandidate(String sentence, SummarySentenceRole role, String stance) {
+        String sanitized = sanitizeSentence(sentence);
+        int score = Math.max(0, 28 - Math.abs(sanitized.length() - 28));
+
+        if (containsInsightKeyword(sanitized)) {
+            score += 8;
+        }
+
+        switch (role) {
+            case CONCLUSION -> {
+                if (!normalize(stance).isBlank() && isSentenceCompatibleWithStance(sanitized, stance)) {
+                    score += 8;
+                }
+                if (containsAnyKeyword(sanitized, CONCLUSION_HINT_KEYWORDS)) {
+                    score += 10;
+                }
+            }
+            case REASON -> {
+                if (containsAnyKeyword(sanitized, REASON_HINT_KEYWORDS)) {
+                    score += 12;
+                }
+            }
+            case RISK -> {
+                if (containsAnyKeyword(sanitized, RISK_HINT_KEYWORDS)) {
+                    score += 12;
+                }
+            }
+        }
+
+        int numericTokenCount = countNumericTokens(sanitized);
+        if (numericTokenCount > 0 && !containsAnyKeyword(sanitized, CRITICAL_LEVEL_KEYWORDS)) {
+            score -= numericTokenCount * 6;
+        }
+        if (numericTokenCount >= 3) {
+            score -= 6;
+        }
+        if (sanitized.length() > 42) {
+            score -= (sanitized.length() - 42) / 4;
+        }
+
+        return score;
+    }
+
+    private static boolean containsRoleHint(String sentence, SummarySentenceRole role) {
+        return switch (role) {
+            case CONCLUSION -> containsAnyKeyword(sentence, CONCLUSION_HINT_KEYWORDS);
+            case REASON -> containsAnyKeyword(sentence, REASON_HINT_KEYWORDS);
+            case RISK -> containsAnyKeyword(sentence, RISK_HINT_KEYWORDS);
+        };
+    }
+
+    private static int countNumericTokens(String sentence) {
+        int count = 0;
+        Matcher matcher = NUMERIC_TOKEN_PATTERN.matcher(sentence);
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    private static String formatByRole(String sectionTitle, String candidate, String stance) {
+        return switch (sectionTitle) {
+            case "綜合建議" -> formatConclusionSentence(candidate, stance);
+            case "風險提示" -> formatRiskSentence(candidate);
+            default -> formatReasonSentence(candidate);
+        };
+    }
+
+    private static String formatConclusionSentence(String candidate, String stance) {
+        String resolvedStance = normalize(stance);
+        String cleaned = stripLeadingConclusionText(candidate);
+
         if (!resolvedStance.isBlank()) {
-            if (reasonSentence.isBlank()) {
+            cleaned = cleaned.replaceFirst("^(偏多|中性|偏空|觀望)\\s*[，、:：]?\\s*", "").trim();
+            if (cleaned.isBlank()) {
                 return ensureSentenceEnding("結論" + resolvedStance);
             }
-
-            String cleanedReason = stripLeadingConclusionText(reasonSentence);
-            if (cleanedReason.isBlank()) {
-                return ensureSentenceEnding("結論" + resolvedStance);
-            }
-            return ensureSentenceEnding("結論" + resolvedStance + "，" + cleanedReason);
+            return ensureSentenceEnding("結論" + resolvedStance + "，" + cleaned);
         }
 
-        return extractPreferredSentence(normalizedSection, stance, false);
-    }
-
-    private static String buildRiskSentence(String sectionText) {
-        String riskSentence = extractPreferredSentence(sectionText, "", true);
-        if (riskSentence.isBlank()) {
+        if (cleaned.isBlank()) {
             return "";
         }
-        if (containsAnyKeyword(riskSentence, RISK_HINT_KEYWORDS) || riskSentence.startsWith("風險上")) {
-            return riskSentence;
-        }
-        return ensureSentenceEnding("風險上，" + stripLeadingConnector(riskSentence));
+        return ensureSentenceEnding("結論上，" + cleaned);
     }
 
-    private static String extractPreferredSentence(String sectionText, String stance, boolean riskSection) {
-        List<String> candidates = extractCandidateSentences(sectionText);
-        if (candidates.isEmpty()) {
+    private static String formatReasonSentence(String candidate) {
+        String cleaned = stripLeadingReasonText(stripLeadingConnector(candidate));
+        if (cleaned.isBlank()) {
             return "";
         }
-
-        String selected = candidates.stream()
-                .filter(sentence -> riskSection || isSentenceCompatibleWithStance(sentence, stance))
-                .findFirst()
-                .orElse(candidates.getFirst());
-
-        if (riskSection) {
-            return ensureSentenceEnding(selected);
+        if (cleaned.startsWith("理由")) {
+            return ensureSentenceEnding(cleaned);
         }
-        return ensureSentenceEnding(selected);
+        return ensureSentenceEnding("理由是，" + cleaned);
+    }
+
+    private static String formatRiskSentence(String candidate) {
+        String cleaned = stripLeadingRiskText(stripLeadingConnector(candidate));
+        if (cleaned.isBlank()) {
+            return "";
+        }
+        if (cleaned.startsWith("風險")) {
+            return ensureSentenceEnding(cleaned);
+        }
+        return ensureSentenceEnding("風險是，" + cleaned);
     }
 
     private static List<String> extractCandidateSentences(String rawText) {
@@ -283,9 +494,22 @@ final class AiSummaryTextHelper {
     }
 
     private static String normalizeSectionTitle(String title) {
-        return stripMarkdownDecorations(title)
+        String normalizedTitle = stripMarkdownDecorations(title)
                 .replaceAll("[：:]+$", "")
                 .trim();
+
+        String comparable = normalizeComparable(normalizedTitle);
+        if (comparable.equals(normalizeComparable("籌碼資金面觀察"))) {
+            return "籌碼資金面觀察";
+        }
+
+        for (String sectionTitle : FALLBACK_SECTION_TITLES) {
+            if (comparable.equals(normalizeComparable(sectionTitle))) {
+                return sectionTitle;
+            }
+        }
+
+        return normalizedTitle;
     }
 
     private static String sanitizeSentence(String text) {
@@ -297,7 +521,7 @@ final class AiSummaryTextHelper {
             sanitized = sanitized
                     .replaceFirst("^\\d+[.、)]\\s*", "")
                     .replaceFirst("^(AI\\s*)?(分析)?(摘要|結論|分析結論|AI結論|綜合判斷|觀察重點|重點整理|投資建議|今日重點|技術面總結|消息面情報|財報概要|基本面|綜合建議|風險提示|籌碼(?:／|/)?資金面觀察)\\s*[：:]\\s*", "")
-                    .replaceFirst("^(好的|以下(?:為|是)?(?:本次)?(?:分析)?(?:摘要|結果)?|綜合來看|整體來看|總結來說|簡單來說|身為分析師|作為投資判斷參考)\\s*[，、:：]?\\s*", "")
+                    .replaceFirst("^(好的|以下(?:為|是)?(?:本次)?(?:分析)?(?:摘要|結果)?|綜合來看|整體來看|總結來說|簡單來說|值得留意的是|目前來看|短線來看|身為分析師|作為投資判斷參考)\\s*[，、:：]?\\s*", "")
                     .replaceFirst("^(身為|作為)[^，。；:：]{0,40}[，、]\\s*", "")
                     .replaceFirst("^針對[^，。；:：]{0,20}[，、]\\s*", "")
                     .replaceAll("\\s+", " ")
@@ -331,6 +555,18 @@ final class AiSummaryTextHelper {
     private static String stripLeadingConclusionText(String text) {
         return sanitizeSentence(text)
                 .replaceFirst("^(結論\\s*[：:]\\s*)?(偏多|中性|偏空|觀望)\\s*[，、:：]?\\s*", "")
+                .trim();
+    }
+
+    private static String stripLeadingReasonText(String text) {
+        return sanitizeSentence(text)
+                .replaceFirst("^(理由(?:是)?|技術面(?:上)?|籌碼(?:／|/)?資金面(?:上)?|籌碼面(?:上)?|資金面(?:上)?|觀察重點(?:是)?|主要原因(?:是)?)\\s*[，、:：]?\\s*", "")
+                .trim();
+    }
+
+    private static String stripLeadingRiskText(String text) {
+        return sanitizeSentence(text)
+                .replaceFirst("^(風險(?:提示|上|是)?|留意|注意|提防)\\s*[，、:：]?\\s*", "")
                 .trim();
     }
 
@@ -418,6 +654,17 @@ final class AiSummaryTextHelper {
                 .count();
     }
 
+    private static boolean isSameCandidate(String candidate, String... comparedCandidates) {
+        String comparableCandidate = normalizeComparable(candidate);
+        for (String comparedCandidate : comparedCandidates) {
+            if (!normalize(comparedCandidate).isBlank()
+                    && comparableCandidate.equals(normalizeComparable(comparedCandidate))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static String ensureSentenceEnding(String text) {
         String sanitized = sanitizeSentence(text);
         if (sanitized.isBlank()) {
@@ -439,7 +686,7 @@ final class AiSummaryTextHelper {
     private static String normalizeComparable(String text) {
         return stripMarkdownDecorations(normalize(text))
                 .toLowerCase()
-                .replaceAll("[\\s\\p{Punct}，。！？；：、「」『』（）()【】《》]+", "");
+                .replaceAll("[\\s\\p{Punct}，。！？；：、「」『』（）()【】《》／]+", "");
     }
 
     private static String normalize(String text) {
