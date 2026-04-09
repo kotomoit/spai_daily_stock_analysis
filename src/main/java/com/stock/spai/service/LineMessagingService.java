@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -35,6 +36,8 @@ public class LineMessagingService {
     }
 
     public Mono<String> sendPushMessage(String text) {
+        validateLineMessagingConfiguration();
+
         Map<String, Object> body = Map.of(
                 "to", myUserId,
                 "messages", List.of(
@@ -46,6 +49,8 @@ public class LineMessagingService {
     }
 
     public Mono<String> sendFlexNotification(String stockId, String aiAnalysis) {
+        validateLineMessagingConfiguration();
+
         Map<String, Object> flexContent = Map.of(
                 "type", "bubble",
                 "header", Map.of(
@@ -95,6 +100,7 @@ public class LineMessagingService {
      * 專業版 Flex 改為直接使用分析結果資料組裝 payload。
      */
     public Mono<String> sendProfessionalFlex(AiAnalysisResult analysisResult) {
+        validateLineMessagingConfiguration();
         Map<String, Object> payload = lineFlexMessageBuilder.buildProfessionalFlexPayload(myUserId, analysisResult);
         return sendPayload(payload);
     }
@@ -133,5 +139,14 @@ public class LineMessagingService {
                 .bodyValue(payload)
                 .retrieve()
                 .bodyToMono(String.class);
+    }
+
+    /**
+     * 允許應用程式在未啟用 LINE 時正常啟動，但真正發送前仍要檢查必要設定。
+     */
+    private void validateLineMessagingConfiguration() {
+        if (!StringUtils.hasText(channelAccessToken) || !StringUtils.hasText(myUserId)) {
+            throw new IllegalStateException("LINE Messaging 設定不完整，請確認 LINE_MESSAGING_TOKEN 與 LINE_MESSAGING_USER_ID 已提供。");
+        }
     }
 }

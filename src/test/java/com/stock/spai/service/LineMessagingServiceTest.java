@@ -13,12 +13,14 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -111,6 +113,29 @@ class LineMessagingServiceTest {
         Map<String, Object> summaryBox = castMap(bodyContents.get(bodyContents.size() - 1));
         List<?> summaryContents = getList(summaryBox, "contents");
         assertEquals("結論偏多，短線量能回溫，整體偏多，但須留意高檔震盪。", castMap(summaryContents.get(1)).get("text"));
+    }
+
+    @Test
+    void sendProfessionalFlex_shouldFailFastWhenLineConfigurationMissing() {
+        ReflectionTestUtils.setField(lineMessagingService, "channelAccessToken", "");
+        ReflectionTestUtils.setField(lineMessagingService, "myUserId", "");
+
+        AiAnalysisResult analysisResult = new AiAnalysisResult(
+                "2330",
+                "台積電",
+                "原始分析內容",
+                "AI 分析摘要",
+                "偏多",
+                new StockAnalysisContext()
+        );
+
+        StepVerifier.create(Mono.defer(() -> lineMessagingService.sendProfessionalFlex(analysisResult)))
+                .expectErrorSatisfies(error -> {
+                    assertThat(error)
+                            .isInstanceOf(IllegalStateException.class)
+                            .hasMessageContaining("LINE Messaging 設定不完整");
+                })
+                .verify();
     }
 
     @SuppressWarnings("unchecked")

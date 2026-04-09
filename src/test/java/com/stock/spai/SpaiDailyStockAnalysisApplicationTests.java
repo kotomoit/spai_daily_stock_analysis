@@ -11,7 +11,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest(properties = {
         "stock.analysis.runner.enabled=false",
         "stock.analysis.report.enabled=false",
-        "stock.analysis.line-notify.enabled=false"
+        "stock.analysis.line-notify.enabled=false",
+        "line.messaging.token=",
+        "line.messaging.user-id="
 })
 @Tag("mock-integration")
 class SpaiDailyStockAnalysisApplicationTests {
